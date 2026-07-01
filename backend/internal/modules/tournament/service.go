@@ -6,8 +6,10 @@ import (
 	"log"
 
 	"bona-backend/internal/modules/admin"
+	"bona-backend/internal/modules/notification"
 	"bona-backend/internal/modules/payout"
 	"bona-backend/internal/repository"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -17,18 +19,20 @@ const (
 )
 
 type Service struct {
-	repo    *repository.Queries
-	db      *pgxpool.Pool
-	payout  *payout.Service
-	auditor *admin.Service
+	repo     *repository.Queries
+	db       *pgxpool.Pool
+	payout   *payout.Service
+	auditor  *admin.Service
+	notifier *notification.Service
 }
 
-func NewService(db *pgxpool.Pool, payouts *payout.Service, auditor *admin.Service) *Service {
+func NewService(db *pgxpool.Pool, payouts *payout.Service, auditor *admin.Service, notifier *notification.Service) *Service {
 	return &Service{
-		repo:    repository.New(db),
-		db:      db,
-		payout:  payouts,
-		auditor: auditor,
+		repo:     repository.New(db),
+		db:       db,
+		payout:   payouts,
+		auditor:  auditor,
+		notifier: notifier,
 	}
 }
 
@@ -144,7 +148,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id, status, userID string) (
 	validTransitions := map[string][]string{
 		"draft":               {"open"},
 		"open":                {"registration_closed", "cancelled"},
-		"registration_closed": {"in_progress", "open"},
+		"registration_closed": {"in_progress", "open", "cancelled"},
 		"in_progress":         {"completed", "cancelled"},
 		"completed":           {},
 		"cancelled":           {},
@@ -176,10 +180,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id, status, userID string) (
 		}
 	}
 
-	tournament, err := s.repo.UpdateTournamentStatus(ctx, repository.UpdateTournamentStatusParams{
-		ID:     id,
-		Status: status,
-	})
+	tournament, refundPayments, err := s.updateStatusWithSideEffects(ctx, existing, status)
 	if err != nil {
 		return nil, fmt.Errorf("update status: %w", err)
 	}
@@ -191,6 +192,10 @@ func (s *Service) UpdateStatus(ctx context.Context, id, status, userID string) (
 		})
 	}
 
+	if status == "cancelled" {
+		s.notifyRefundPending(ctx, tournament, refundPayments)
+	}
+
 	if status == "completed" && s.payout != nil {
 		if _, err := s.payout.EnsureForTournament(ctx, id); err != nil {
 			log.Printf("ensure payout for %s: %v", id, err)
@@ -198,6 +203,62 @@ func (s *Service) UpdateStatus(ctx context.Context, id, status, userID string) (
 	}
 
 	return &tournament, nil
+}
+
+func (s *Service) updateStatusWithSideEffects(ctx context.Context, existing repository.Tournament, status string) (repository.Tournament, []repository.Payment, error) {
+	if status != "cancelled" {
+		tournament, err := s.repo.UpdateTournamentStatus(ctx, repository.UpdateTournamentStatusParams{
+			ID:     existing.ID,
+			Status: status,
+		})
+		return tournament, nil, err
+	}
+
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return repository.Tournament{}, nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	q := repository.New(tx)
+	tournament, err := q.UpdateTournamentStatus(ctx, repository.UpdateTournamentStatusParams{
+		ID:     existing.ID,
+		Status: status,
+	})
+	if err != nil {
+		return repository.Tournament{}, nil, err
+	}
+
+	reason := "Tournament cancelled by organizer"
+	refundPayments, err := q.MarkTournamentPaymentsRefundPending(ctx, repository.MarkTournamentPaymentsRefundPendingParams{
+		TournamentID: existing.ID,
+		Reason:       reason,
+	})
+	if err != nil {
+		return repository.Tournament{}, nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return repository.Tournament{}, nil, err
+	}
+
+	return tournament, refundPayments, nil
+}
+
+func (s *Service) notifyRefundPending(ctx context.Context, tournament repository.Tournament, payments []repository.Payment) {
+	if s.notifier == nil {
+		return
+	}
+	link := fmt.Sprintf("/tournaments/%s", tournament.ID)
+	for _, payment := range payments {
+		s.notifier.Emit(ctx, repository.CreateNotificationParams{
+			UserID:  payment.UserID,
+			Type:    "refund_pending",
+			Title:   "Refund pending",
+			Message: fmt.Sprintf("%s was cancelled. Your %d %s entry payment is pending organizer refund.", tournament.Title, payment.Amount, payment.Currency),
+			Link:    &link,
+		})
+	}
 }
 
 func (s *Service) ListByOrganizer(ctx context.Context, organizerID string) ([]repository.ListTournamentsByOrganizerRow, error) {

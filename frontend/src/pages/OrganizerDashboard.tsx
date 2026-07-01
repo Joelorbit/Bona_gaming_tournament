@@ -37,24 +37,42 @@ interface PayoutRow {
   created_at: string
 }
 
+interface PaymentRow {
+  id: string
+  user_id: string
+  tournament_id: string
+  amount: number
+  currency: string
+  status: string
+  refund_status: string
+  refund_reason?: string | null
+  refund_requested_at?: string | null
+  refunded_at?: string | null
+  created_at: string
+}
+
 export function OrganizerDashboard() {
   const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [disputes, setDisputes] = useState<MatchRow[]>([])
   const [payouts, setPayouts] = useState<PayoutRow[]>([])
+  const [payments, setPayments] = useState<PaymentRow[]>([])
   const [tournamentTitles, setTournamentTitles] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [marking, setMarking] = useState<string | null>(null)
+  const [refunding, setRefunding] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   async function reload() {
-    const [t, d, p] = await Promise.all([
+    const [t, d, p, payments] = await Promise.all([
       api.get<Tournament[]>('/api/v1/tournaments/my').catch(() => []),
       api.get<MatchRow[]>('/api/v1/me/disputes').catch(() => []),
       api.get<PayoutRow[]>('/api/v1/me/organizer-payouts').catch(() => []),
+      api.get<PaymentRow[]>('/api/v1/me/organizer-payments').catch(() => []),
     ])
     setTournaments(t || [])
     setDisputes(d || [])
     setPayouts(p || [])
+    setPayments(payments || [])
     setTournamentTitles(Object.fromEntries((t || []).map(row => [row.id, row.title])))
   }
 
@@ -68,6 +86,7 @@ export function OrganizerDashboard() {
 
   const active = tournaments.filter(t => t.status === 'open' || t.status === 'in_progress' || t.status === 'registration_closed')
   const pendingPayouts = payouts.filter(p => p.status === 'pending')
+  const pendingRefunds = payments.filter(payment => payment.refund_status === 'pending')
   const totalPrizePool = tournaments.reduce((s, t) => s + (t.prize_pool || 0), 0)
 
   async function markPaid(id: string) {
@@ -80,6 +99,19 @@ export function OrganizerDashboard() {
       setError(err instanceof Error ? err.message : 'Failed to mark payout paid')
     } finally {
       setMarking(null)
+    }
+  }
+
+  async function markRefunded(id: string) {
+    setRefunding(id)
+    setError('')
+    try {
+      await api.post(`/api/v1/payments/${id}/mark-refunded`)
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to mark refund paid')
+    } finally {
+      setRefunding(null)
     }
   }
 
@@ -107,6 +139,38 @@ export function OrganizerDashboard() {
         <StatCard icon={<DollarSign />} label="Prize pool" value={`${totalPrizePool.toLocaleString()} ETB`} />
         <StatCard icon={<AlertTriangle />} label="Open disputes" value={disputes.length} alert={disputes.length > 0} />
       </div>
+
+      {pendingRefunds.length > 0 && (
+        <Card padding="lg" className="border-warning-500/40 bg-warning-50">
+          <CardHeader><CardTitle>Refunds required</CardTitle></CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {pendingRefunds.map(payment => (
+                <div key={payment.id} className="flex flex-col gap-3 rounded-lg border border-warning-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-body-sm font-medium text-on-surface">
+                      {tournamentTitles[payment.tournament_id] || 'Cancelled tournament'}
+                    </p>
+                    <p className="text-label-md text-text-secondary">
+                      Player {payment.user_id.slice(0, 8)}... · {payment.amount.toLocaleString()} {payment.currency}
+                      {payment.refund_requested_at ? ` · Requested ${formatDate(payment.refund_requested_at)}` : ''}
+                    </p>
+                    {payment.refund_reason && <p className="text-label-md text-text-secondary">{payment.refund_reason}</p>}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    loading={refunding === payment.id}
+                    onClick={() => markRefunded(payment.id)}
+                  >
+                    Mark refunded
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {disputes.length > 0 && (
         <Card padding="lg" className="border-danger/40 bg-danger/5">

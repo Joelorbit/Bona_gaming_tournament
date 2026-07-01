@@ -7,6 +7,7 @@ import (
 
 	"bona-backend/internal/middleware"
 	"bona-backend/internal/modules/admin"
+	"bona-backend/internal/modules/notification"
 	"bona-backend/internal/modules/payout"
 	"bona-backend/internal/repository"
 	"bona-backend/internal/utils"
@@ -19,9 +20,9 @@ type Handler struct {
 	service *Service
 }
 
-func NewHandler(db *pgxpool.Pool, payouts *payout.Service, auditor *admin.Service) *Handler {
+func NewHandler(db *pgxpool.Pool, payouts *payout.Service, auditor *admin.Service, notifier *notification.Service) *Handler {
 	return &Handler{
-		service: NewService(db, payouts, auditor),
+		service: NewService(db, payouts, auditor, notifier),
 	}
 }
 

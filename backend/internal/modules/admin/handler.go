@@ -122,6 +122,13 @@ func (h *Handler) ListAllPayouts(w http.ResponseWriter, r *http.Request) {
 	if payouts == nil {
 		payouts = []repository.Payout{}
 	}
+	for i := range payouts {
+		payouts[i].PhoneNumber = nil
+		payouts[i].TelebirrNumber = nil
+		payouts[i].BankName = nil
+		payouts[i].BankAccountName = nil
+		payouts[i].BankAccountNumber = nil
+	}
 	utils.JSON(w, http.StatusOK, payouts)
 }
 

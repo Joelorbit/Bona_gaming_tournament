@@ -141,3 +141,13 @@ func (q *Queries) UpdateRegistrationPaymentStatus(ctx context.Context, p UpdateR
 	err := row.Scan(&r.ID, &r.TournamentID, &r.UserID, &r.PaymentStatus, &r.Seed, &r.RegisteredAt)
 	return r, err
 }
+
+const markTournamentRegistrationsRefunded = `
+UPDATE registrations
+SET payment_status = 'refunded'
+WHERE tournament_id = $1 AND payment_status = 'paid'`
+
+func (q *Queries) MarkTournamentRegistrationsRefunded(ctx context.Context, tournamentID string) error {
+	_, err := q.db.Exec(ctx, markTournamentRegistrationsRefunded, tournamentID)
+	return err
+}

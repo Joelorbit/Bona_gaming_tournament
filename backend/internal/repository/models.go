@@ -159,6 +159,11 @@ type Payment struct {
 	VerifiedAt        *time.Time      `json:"verified_at,omitempty"`
 	WebhookReceivedAt *time.Time      `json:"webhook_received_at,omitempty"`
 	FailureReason     *string         `json:"failure_reason,omitempty"`
+	RefundStatus      string          `json:"refund_status"`
+	RefundReason      *string         `json:"refund_reason,omitempty"`
+	RefundRequestedAt *time.Time      `json:"refund_requested_at,omitempty"`
+	RefundedAt        *time.Time      `json:"refunded_at,omitempty"`
+	RefundedBy        *string         `json:"refunded_by,omitempty"`
 	Metadata          json.RawMessage `json:"metadata,omitempty"`
 	CreatedAt         time.Time       `json:"created_at"`
 	UpdatedAt         time.Time       `json:"updated_at"`

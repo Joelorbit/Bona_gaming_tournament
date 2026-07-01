@@ -74,7 +74,7 @@ func (r *Router) setupRoutes(cfg *RouterConfig) {
 	adminHandler := admin.NewHandlerWithService(auditor, r.DB)
 
 	userHandler := user.NewHandler(r.DB)
-	tournamentHandler := tournament.NewHandler(r.DB, payouts, auditor)
+	tournamentHandler := tournament.NewHandler(r.DB, payouts, auditor, notifier)
 	registrationHandler := registration.NewHandler(r.DB, notifier)
 	bracketHandler := bracket.NewHandler(r.DB, notifier)
 	matchHandler := match.NewHandler(r.DB, notifier, payouts, auditor)
@@ -129,6 +129,7 @@ func (r *Router) setupRoutes(cfg *RouterConfig) {
 			r.Get("/me/disputes", matchHandler.MyDisputes)
 			r.Get("/me/payouts", payoutHandler.ListMine)
 			r.Get("/me/organizer-payouts", payoutHandler.ListByOrganizer)
+			r.Get("/me/organizer-payments", paymentHandler.ListByOrganizer)
 
 			r.Route("/matches", func(r chi.Router) {
 				r.Get("/{id}", matchHandler.GetByID)
@@ -155,6 +156,7 @@ func (r *Router) setupRoutes(cfg *RouterConfig) {
 				r.Post("/create", paymentHandler.CreatePayment)
 				r.Post("/return", paymentHandler.ConfirmReturn)
 				r.Get("/status/{id}", paymentHandler.GetPaymentStatus)
+				r.Post("/{id}/mark-refunded", paymentHandler.MarkRefunded)
 			})
 
 			r.Route("/admin", func(r chi.Router) {

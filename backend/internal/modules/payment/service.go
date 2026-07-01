@@ -308,6 +308,69 @@ func (s *Service) GetPayment(ctx context.Context, id string) (*repository.Paymen
 	return &payment, nil
 }
 
+func (s *Service) ListByOrganizer(ctx context.Context, organizerID string) ([]repository.Payment, error) {
+	return s.repo.ListPaymentsByOrganizer(ctx, organizerID)
+}
+
+func (s *Service) MarkRefunded(ctx context.Context, paymentID, organizerID string) (*repository.Payment, error) {
+	payment, err := s.repo.GetPayment(ctx, paymentID)
+	if err != nil {
+		return nil, fmt.Errorf("payment not found")
+	}
+	tournament, err := s.repo.GetTournament(ctx, payment.TournamentID)
+	if err != nil {
+		return nil, fmt.Errorf("tournament not found")
+	}
+	if tournament.OrganizerID != organizerID {
+		return nil, fmt.Errorf("only the tournament organizer can mark refunds")
+	}
+	if tournament.Status != "cancelled" {
+		return nil, fmt.Errorf("refunds can only be marked after tournament cancellation")
+	}
+	if payment.RefundStatus != "pending" {
+		return nil, fmt.Errorf("payment is not pending refund")
+	}
+
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin refund transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	q := repository.New(tx)
+	updated, err := q.MarkPaymentRefunded(ctx, repository.MarkPaymentRefundedParams{
+		ID:         paymentID,
+		RefundedBy: organizerID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("mark refunded: %w", err)
+	}
+	_, err = q.UpdateRegistrationPaymentStatus(ctx, repository.UpdateRegistrationPaymentStatusParams{
+		UserID:        updated.UserID,
+		TournamentID:  updated.TournamentID,
+		PaymentStatus: "refunded",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("update registration refund status: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit refund transaction: %w", err)
+	}
+
+	if s.notifier != nil {
+		link := fmt.Sprintf("/tournaments/%s", updated.TournamentID)
+		s.notifier.Emit(ctx, repository.CreateNotificationParams{
+			UserID:  updated.UserID,
+			Type:    "refund_paid",
+			Title:   "Refund marked paid",
+			Message: fmt.Sprintf("Your %d %s entry refund for %s was marked paid.", updated.Amount, updated.Currency, tournament.Title),
+			Link:    &link,
+		})
+	}
+
+	return &updated, nil
+}
+
 func stringValue(v *string, fallback string) string {
 	if v != nil && strings.TrimSpace(*v) != "" {
 		return strings.TrimSpace(*v)

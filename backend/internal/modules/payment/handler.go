@@ -7,6 +7,7 @@ import (
 
 	"bona-backend/internal/middleware"
 	"bona-backend/internal/modules/notification"
+	"bona-backend/internal/repository"
 	"bona-backend/internal/utils"
 	"bona-backend/pkg/addispay"
 
@@ -98,6 +99,19 @@ func (h *Handler) GetPaymentStatus(w http.ResponseWriter, r *http.Request) {
 	utils.JSON(w, http.StatusOK, payment)
 }
 
+func (h *Handler) ListByOrganizer(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	payments, err := h.service.ListByOrganizer(r.Context(), userID)
+	if err != nil {
+		utils.ErrorJSON(w, http.StatusInternalServerError, "Failed to list payments: "+err.Error())
+		return
+	}
+	if payments == nil {
+		payments = []repository.Payment{}
+	}
+	utils.JSON(w, http.StatusOK, payments)
+}
+
 func (h *Handler) ConfirmReturn(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 
@@ -118,4 +132,17 @@ func (h *Handler) ConfirmReturn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.JSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) MarkRefunded(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	paymentID := chi.URLParam(r, "id")
+
+	payment, err := h.service.MarkRefunded(r.Context(), paymentID, userID)
+	if err != nil {
+		utils.ErrorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.JSON(w, http.StatusOK, payment)
 }

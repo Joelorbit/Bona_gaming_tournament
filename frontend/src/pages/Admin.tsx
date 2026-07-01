@@ -63,6 +63,11 @@ interface PaymentRow {
   verified_at?: string | null
   webhook_received_at?: string | null
   failure_reason?: string | null
+  refund_status: string
+  refund_reason?: string | null
+  refund_requested_at?: string | null
+  refunded_at?: string | null
+  refunded_by?: string | null
   created_at: string
   updated_at: string
 }
@@ -279,6 +284,8 @@ function AdminPaymentDetails({ payment }: { payment: PaymentRow }) {
       <div className="mb-2 flex flex-wrap items-center gap-2">
         {!hasWebhook && <Badge status="pending">no webhook yet</Badge>}
         {payment.verified_at && <Badge status="completed">verified</Badge>}
+        {payment.refund_status === 'pending' && <Badge status="pending">refund pending</Badge>}
+        {payment.refund_status === 'refunded' && <Badge status="completed">refunded</Badge>}
         {isStalePending && (
           <span className="inline-flex items-center gap-1 text-label-md font-medium text-warning-700">
             <Clock className="h-4 w-4" />
@@ -293,6 +300,9 @@ function AdminPaymentDetails({ payment }: { payment: PaymentRow }) {
         {payment.webhook_received_at && <Detail label="Webhook received" value={formatDate(payment.webhook_received_at)} />}
         {payment.verified_at && <Detail label="Verified" value={formatDate(payment.verified_at)} />}
         {payment.failure_reason && <Detail label="Failure reason" value={payment.failure_reason} />}
+        {payment.refund_reason && <Detail label="Refund reason" value={payment.refund_reason} />}
+        {payment.refund_requested_at && <Detail label="Refund requested" value={formatDate(payment.refund_requested_at)} />}
+        {payment.refunded_at && <Detail label="Refunded" value={formatDate(payment.refunded_at)} />}
       </div>
     </div>
   )
@@ -313,13 +323,7 @@ function AdminPayoutDetails({ payout }: { payout: PayoutRow }) {
         {payout.payout_method === 'bank' ? <Landmark className="h-4 w-4" /> : <Smartphone className="h-4 w-4" />}
         {payout.payout_method === 'bank' ? 'Bank payout' : 'Telebirr payout'}
       </div>
-      <div className="grid gap-2 text-body-sm sm:grid-cols-2">
-        {payout.phone_number && <Detail label="Phone" value={payout.phone_number} />}
-        {payout.payout_method === 'telebirr' && payout.telebirr_number && <Detail label="Telebirr number" value={payout.telebirr_number} />}
-        {payout.payout_method === 'bank' && payout.bank_name && <Detail label="Bank" value={payout.bank_name} />}
-        {payout.payout_method === 'bank' && payout.bank_account_name && <Detail label="Account name" value={payout.bank_account_name} />}
-        {payout.payout_method === 'bank' && payout.bank_account_number && <Detail label="Account number" value={payout.bank_account_number} />}
-      </div>
+      <p className="text-body-sm text-text-secondary">Sensitive payout details are visible only to the hosting organizer.</p>
       <p className="mt-2 text-label-md text-text-secondary">Submitted {formatDate(payout.payout_details_submitted_at)}</p>
     </div>
   )
