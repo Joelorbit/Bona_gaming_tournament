@@ -1,0 +1,2 @@
+ALTER TABLE profiles DROP COLUMN IF EXISTS country;
+ALTER TABLE profiles DROP COLUMN IF EXISTS country_code;

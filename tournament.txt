@@ -1,0 +1,51 @@
+Right now, the app does not have a good way for the organizer to contact the winner or collect payout details.
+
+  What exists today:
+
+  - Winner gets an in-app notification: “You won… organizer will pay out soon.”
+  - Organizer sees a pending payout in the organizer dashboard.
+  - Organizer sees only the winner user ID slice like Winner: abc12345...
+  - Profiles have email in the database, but the app only shows email to the profile owner, not to organizers.
+  - There is no chat system.
+  - There are no bank / Telebirr / phone payout fields.
+
+  So practically: today you cannot reliably contact/pay the winner from inside the app unless you already know them.
+
+  What you should add is one of these:
+
+  1. Simple payout contact fields
+     Add fields to profile:
+      - phone number
+      - Telebirr number
+      - bank name
+      - bank account name
+      - bank account number
+
+     Then show those fields only to the tournament organizer after the player wins or has a pending payout.
+
+  2. Payout request form
+     When a player wins, show them a page: “Submit payout details.”
+     They choose Telebirr or bank and submit details for that payout.
+     Organizer sees the details in the payout dashboard, pays outside AddisPay, then clicks Mark paid.
+
+  3. In-app messages
+     Add chat between organizer and winner.
+     This is more work than payout fields, and still does not solve structured bank details as cleanly.
+
+  Best option for your app: add payout details to the winner payout flow, not full chat first.
+
+  The clean flow would be:
+
+  Tournament ends
+  Winner gets notification
+  Winner opens /me/payouts
+  Winner enters Telebirr/bank details for that payout
+  Organizer opens dashboard
+  Organizer sees payout amount + winner payout details
+  Organizer sends money manually
+  Organizer clicks Mark paid
+  Winner gets paid notification
+
+  That is the missing piece in your current system.
+
+───────────────────────────────────────────────────────

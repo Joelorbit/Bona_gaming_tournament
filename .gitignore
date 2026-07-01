@@ -1,0 +1,27 @@
+# Go build artifacts
+backend/bin/
+backend/tmp/
+*.test
+*.out
+
+# Env / secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# TS build cache
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+*.log
