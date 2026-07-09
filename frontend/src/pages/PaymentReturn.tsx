@@ -59,8 +59,7 @@ export function PaymentReturn() {
 
   const finalTournamentID = result?.tournament_id || tournamentID
   const isPaid = result?.payment_status === 'paid'
-  const isPending = result?.payment_status === 'pending'
-  const isSuccessReturn = returnState === 'success'
+  const isFailed = result?.payment_status === 'failed' || returnState !== 'success'
 
   return (
     <div className="max-w-xl mx-auto py-10">
@@ -72,16 +71,14 @@ export function PaymentReturn() {
 
           <div>
             <h1 className="text-headline-sm text-on-surface">
-              {loading ? 'Checking payment' : isPaid ? 'Payment confirmed' : isPending && isSuccessReturn ? 'Payment processing' : isSuccessReturn ? 'Payment needs review' : 'Payment not completed'}
+              {loading ? 'Checking payment' : isPaid ? 'Payment confirmed' : isFailed ? 'Payment failed' : 'Payment not completed'}
             </h1>
             <p className="text-body-md text-text-secondary mt-2">
               {loading
                 ? 'Checking your AddisPay return and current payment status.'
                 : isPaid
                   ? 'Your tournament spot is secured. Continue to the tournament.'
-                  : isPending && isSuccessReturn
-                    ? 'We received your return from AddisPay. Your spot will be confirmed after the verified payment webhook arrives.'
-                    : error || 'The payment was not confirmed. Return to the tournament and try again.'}
+                  : error || 'The payment was not completed. Return to the tournament and try again.'}
             </p>
           </div>
 

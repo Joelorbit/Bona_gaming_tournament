@@ -134,6 +134,46 @@ func (q *Queries) CompletePaymentFromWebhook(ctx context.Context, p CompletePaym
 	))
 }
 
+type CompletePaymentFromReturnParams struct {
+	ID                string          `json:"id"`
+	Status            string          `json:"status"`
+	ProviderStatus    string          `json:"provider_status"`
+	ProviderPaymentID *string         `json:"provider_payment_id,omitempty"`
+	FailureReason     *string         `json:"failure_reason,omitempty"`
+	Metadata          json.RawMessage `json:"metadata,omitempty"`
+}
+
+const completePaymentFromReturn = `
+UPDATE payments
+SET status = CASE
+        WHEN status = 'paid' THEN status
+        ELSE $2
+    END,
+    provider_status = $3,
+    provider_payment_id = COALESCE($4, provider_payment_id),
+    verified_at = CASE
+        WHEN $2 = 'paid' THEN COALESCE(verified_at, NOW())
+        ELSE verified_at
+    END,
+    failure_reason = $5,
+    metadata = COALESCE($6, metadata),
+    updated_at = NOW()
+WHERE id = $1
+RETURNING ` + paymentColumns
+
+func (q *Queries) CompletePaymentFromReturn(ctx context.Context, p CompletePaymentFromReturnParams) (Payment, error) {
+	return scanPayment(q.db.QueryRow(
+		ctx,
+		completePaymentFromReturn,
+		p.ID,
+		p.Status,
+		p.ProviderStatus,
+		p.ProviderPaymentID,
+		p.FailureReason,
+		p.Metadata,
+	))
+}
+
 type MarkPaymentGatewayFailedParams struct {
 	ID            string  `json:"id"`
 	FailureReason *string `json:"failure_reason,omitempty"`

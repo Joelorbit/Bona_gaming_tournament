@@ -1,7 +1,11 @@
 package addispay
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"testing"
 )
 
@@ -31,6 +35,20 @@ func TestHostedCheckoutURLUsesDirectCheckoutURL(t *testing.T) {
 
 	got := resp.HostedCheckoutURL()
 	want := "https://checkout.addispay.et/pay/order-uuid"
+	if got != want {
+		t.Fatalf("HostedCheckoutURL() = %q, want %q", got, want)
+	}
+}
+
+func TestHostedCheckoutURLResolvesRelativeCheckoutURLAgainstBaseURL(t *testing.T) {
+	resp := &PaymentResponse{
+		CheckoutURL: "/checkout/order",
+		UUID:        "order-uuid",
+		baseURL:     "https://uat.api.addispay.et",
+	}
+
+	got := resp.HostedCheckoutURL()
+	want := "https://uat.api.addispay.et/checkout/order/order-uuid"
 	if got != want {
 		t.Fatalf("HostedCheckoutURL() = %q, want %q", got, want)
 	}
@@ -98,4 +116,88 @@ func TestWebhookPayloadUnmarshalWrappedFields(t *testing.T) {
 	if payload.PaymentID != "gateway-payment-id" {
 		t.Fatalf("PaymentID = %q, want gateway-payment-id", payload.PaymentID)
 	}
+}
+
+func TestWebhookPayloadUnmarshalTopLevelAliases(t *testing.T) {
+	var payload WebhookPayload
+	body := []byte(`{
+		"transactionReference": "local-payment-id",
+		"state": "captured",
+		"totalAmount": 42.9,
+		"currency": "ETB",
+		"paymentId": "provider-payment-id"
+	}`)
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+
+	if payload.Reference != "local-payment-id" {
+		t.Fatalf("Reference = %q, want local-payment-id", payload.Reference)
+	}
+	if payload.Status != "captured" {
+		t.Fatalf("Status = %q, want captured", payload.Status)
+	}
+	if payload.Amount != 42 {
+		t.Fatalf("Amount = %d, want 42", payload.Amount)
+	}
+	if payload.PaymentID != "provider-payment-id" {
+		t.Fatalf("PaymentID = %q, want provider-payment-id", payload.PaymentID)
+	}
+}
+
+func TestVerifyWebhookSignature(t *testing.T) {
+	payload := WebhookPayload{
+		Reference: "payment-123",
+		Status:    "paid",
+		Amount:    150,
+	}
+	payload.Signature = signWebhookPayload(payload, "shared-secret")
+
+	if !(&Client{}).VerifyWebhookSignature(payload, "shared-secret") {
+		t.Fatal("VerifyWebhookSignature() = false, want true")
+	}
+}
+
+func TestVerifyWebhookSignatureRejectsInvalidInputs(t *testing.T) {
+	payload := WebhookPayload{
+		Reference: "payment-123",
+		Status:    "paid",
+		Amount:    150,
+	}
+	payload.Signature = signWebhookPayload(payload, "shared-secret")
+
+	tests := []struct {
+		name    string
+		payload WebhookPayload
+		secret  string
+	}{
+		{name: "empty secret", payload: payload, secret: ""},
+		{name: "wrong secret", payload: payload, secret: "wrong-secret"},
+		{name: "tampered amount", payload: WebhookPayload{
+			Reference: payload.Reference,
+			Status:    payload.Status,
+			Amount:    payload.Amount + 1,
+			Signature: payload.Signature,
+		}, secret: "shared-secret"},
+		{name: "non hex signature", payload: WebhookPayload{
+			Reference: payload.Reference,
+			Status:    payload.Status,
+			Amount:    payload.Amount,
+			Signature: "not-hex",
+		}, secret: "shared-secret"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if (&Client{}).VerifyWebhookSignature(tt.payload, tt.secret) {
+				t.Fatal("VerifyWebhookSignature() = true, want false")
+			}
+		})
+	}
+}
+
+func signWebhookPayload(payload WebhookPayload, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(fmt.Sprintf("%s|%s|%d", payload.Reference, payload.Status, payload.Amount)))
+	return hex.EncodeToString(mac.Sum(nil))
 }

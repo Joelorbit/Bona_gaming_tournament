@@ -55,6 +55,7 @@ type PaymentResponse struct {
 	PaymentURL         string `json:"payment_url"`
 	UUID               string `json:"uuid"`
 	Status             string `json:"status"`
+	baseURL            string
 }
 
 type WebhookPayload struct {
@@ -101,7 +102,6 @@ func (c *Client) CreatePayment(req PaymentRequest) (*PaymentResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
-
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return nil, fmt.Errorf("addispay error (%d): %s", resp.StatusCode, string(respBody))
 	}
@@ -110,6 +110,7 @@ func (c *Client) CreatePayment(req PaymentRequest) (*PaymentResponse, error) {
 	if err := json.Unmarshal(respBody, &paymentResp); err != nil {
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
+	paymentResp.baseURL = c.BaseURL
 
 	return &paymentResp, nil
 }
@@ -144,20 +145,18 @@ func (r *PaymentResponse) HostedCheckoutURL() string {
 		return ""
 	}
 	for _, candidate := range []string{r.HostedCheckoutLink, r.PaymentURL} {
-		if validURL(candidate) {
-			return strings.TrimSpace(candidate)
+		if normalized := normalizeCheckoutURL(candidate, r.baseURL); normalized != "" {
+			return normalized
 		}
 	}
-	if r.CheckoutURL == "" {
+	checkoutURL := strings.TrimSpace(r.CheckoutURL)
+	if checkoutURL == "" {
 		return ""
 	}
-	if r.UUID == "" {
-		if validURL(r.CheckoutURL) {
-			return strings.TrimSpace(r.CheckoutURL)
-		}
-		return ""
+	if uuid := strings.TrimSpace(r.UUID); uuid != "" {
+		checkoutURL = strings.TrimRight(checkoutURL, "/") + "/" + strings.TrimLeft(uuid, "/")
 	}
-	return strings.TrimRight(strings.TrimSpace(r.CheckoutURL), "/") + "/" + strings.TrimLeft(strings.TrimSpace(r.UUID), "/")
+	return normalizeCheckoutURL(checkoutURL, r.baseURL)
 }
 
 func (p *WebhookPayload) UnmarshalJSON(data []byte) error {
@@ -282,6 +281,33 @@ func validURL(raw string) bool {
 	}
 	u, err := url.Parse(raw)
 	return err == nil && u.Scheme != "" && u.Host != ""
+}
+
+func normalizeCheckoutURL(raw, base string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if validURL(raw) {
+		return raw
+	}
+	base = strings.TrimSpace(base)
+	if base == "" {
+		return ""
+	}
+	baseURL, err := url.Parse(base)
+	if err != nil || baseURL.Scheme == "" || baseURL.Host == "" {
+		return ""
+	}
+	ref, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	resolved := baseURL.ResolveReference(ref)
+	if resolved.Scheme == "" || resolved.Host == "" {
+		return ""
+	}
+	return resolved.String()
 }
 
 // VerifyWebhookSignature checks the HMAC-SHA256 signature on a webhook payload.

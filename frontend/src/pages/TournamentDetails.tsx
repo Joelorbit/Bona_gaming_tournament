@@ -129,22 +129,62 @@ export function TournamentDetails() {
     setParticipants(p || [])
   }
 
+  function openCheckoutTab() {
+    const tab = window.open('', '_blank')
+    if (!tab) {
+      setActionError('Please allow pop-ups to open AddisPay checkout.')
+      return null
+    }
+    tab.opener = null
+    tab.document.title = 'Opening AddisPay checkout'
+    tab.document.body.innerHTML = '<p style="font-family: system-ui, sans-serif; padding: 24px;">Opening AddisPay checkout...</p>'
+    return tab
+  }
+
+  function redirectToCheckout(tab: Window | null, paymentURL?: string) {
+    if (!paymentURL) {
+      tab?.close()
+      setActionError('Payment URL not available')
+      return false
+    }
+    try {
+      const url = new URL(paymentURL)
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        throw new Error('unsupported checkout URL')
+      }
+      if (tab) {
+        tab.location.href = url.toString()
+      } else {
+        window.open(url.toString(), '_blank', 'noopener,noreferrer')
+      }
+      return true
+    } catch {
+      tab?.close()
+      setActionError('Payment checkout link is invalid. Please try again.')
+      return false
+    }
+  }
+
   async function handleRegister() {
     if (!tournament) return
     setActionLoading(true)
     setActionError(null)
+    const checkoutTab = tournament.entry_fee > 0 ? openCheckoutTab() : null
+    if (tournament.entry_fee > 0 && !checkoutTab) {
+      setActionLoading(false)
+      return
+    }
     try {
       await api.post(`/api/v1/tournaments/${tournament.id}/join`)
       await refreshParticipants()
       if (tournament.entry_fee > 0) {
         const pay = await api.post<PaymentResult>('/api/v1/payments/create', { tournament_id: tournament.id })
-        if (pay.payment_url) {
-          window.location.href = pay.payment_url
+        if (redirectToCheckout(checkoutTab, pay.payment_url)) {
           return
         }
-        setActionError('Payment URL not available')
       }
     } catch (err: any) {
+      checkoutTab?.close()
       setActionError(err instanceof ApiError ? err.message : 'Failed to register')
     } finally {
       setActionLoading(false)
@@ -155,14 +195,18 @@ export function TournamentDetails() {
     if (!tournament) return
     setActionLoading(true)
     setActionError(null)
+    const checkoutTab = openCheckoutTab()
+    if (!checkoutTab) {
+      setActionLoading(false)
+      return
+    }
     try {
       const pay = await api.post<PaymentResult>('/api/v1/payments/create', { tournament_id: tournament.id })
-      if (pay.payment_url) {
-        window.location.href = pay.payment_url
+      if (redirectToCheckout(checkoutTab, pay.payment_url)) {
         return
       }
-      setActionError('Payment URL not available')
     } catch (err: any) {
+      checkoutTab.close()
       setActionError(err instanceof ApiError ? err.message : 'Failed to start payment')
     } finally {
       setActionLoading(false)

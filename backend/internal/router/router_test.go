@@ -100,3 +100,25 @@ func TestPublicPathsAreMounted(t *testing.T) {
 		})
 	}
 }
+
+func TestWebhookRouteRejectsInvalidSignatureBeforeDatabase(t *testing.T) {
+	r := New(nil, &RouterConfig{
+		AddisPayWebhookSecret: "shared-secret",
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/payments/webhook", strings.NewReader(`{
+		"reference": "payment-123",
+		"status": "paid",
+		"amount": 100,
+		"currency": "ETB",
+		"signature": "00"
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	r.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}

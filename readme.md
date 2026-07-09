@@ -31,7 +31,7 @@ Default URLs:
 
 ## Documentation
 
-Read [doc.md](doc.md) for full setup, local AddisPay webhook testing, payment flow, admin access, payout flow, and review notes.
+Read [doc.md](doc.md) for the backend-focused AddisPay payment integration guide, including webhook testing, payment flow, reconciliation, production checks, and technical Q&A.
 
 ## Verification
 

@@ -174,10 +174,31 @@ func (s *Service) ConfirmReturn(ctx context.Context, userID, paymentID, status, 
 		return nil, fmt.Errorf("invalid payment return token")
 	}
 
+	newStatus := gatewayPaymentStatus(status)
+	if newStatus == "" {
+		return nil, fmt.Errorf("payment return status unsupported")
+	}
+
+	var failureReason *string
+	if newStatus == "failed" {
+		reason := fmt.Sprintf("AddisPay returned %s", strings.ToLower(strings.TrimSpace(status)))
+		failureReason = &reason
+	}
+	payload := addispayclient.WebhookPayload{
+		Reference: payment.ID,
+		Status:    status,
+		Amount:    int(payment.Amount),
+		Currency:  payment.Currency,
+	}
+	updated, err := s.completePaymentFromGateway(ctx, payment, payload, newStatus, failureReason, false)
+	if err != nil {
+		return nil, err
+	}
+
 	return &PaymentReturnResult{
-		Payment:       &payment,
-		TournamentID:  payment.TournamentID,
-		PaymentStatus: payment.Status,
+		Payment:       &updated,
+		TournamentID:  updated.TournamentID,
+		PaymentStatus: updated.Status,
 	}, nil
 }
 
@@ -208,12 +229,13 @@ func (s *Service) HandleWebhook(ctx context.Context, payload addispayclient.Webh
 		s.recordWebhookMismatch(ctx, payment.ID, payload, "payment status unsupported")
 		return fmt.Errorf("payment status unsupported")
 	}
-	_, err = s.completePaymentFromWebhook(ctx, payment, payload, newStatus, nil)
+	_, err = s.completePaymentFromGateway(ctx, payment, payload, newStatus, nil, true)
 	return err
 }
 
-func (s *Service) completePaymentFromWebhook(ctx context.Context, payment repository.Payment, payload addispayclient.WebhookPayload, status string, failureReason *string) (repository.Payment, error) {
+func (s *Service) completePaymentFromGateway(ctx context.Context, payment repository.Payment, payload addispayclient.WebhookPayload, status string, failureReason *string, fromWebhook bool) (repository.Payment, error) {
 	alreadyPaid := payment.Status == "paid"
+	alreadyFailed := payment.Status == "failed"
 	metadata := webhookMetadata(payload)
 	providerPaymentID := cleanString(payload.PaymentID)
 	providerStatus := strings.TrimSpace(payload.Status)
@@ -228,23 +250,35 @@ func (s *Service) completePaymentFromWebhook(ctx context.Context, payment reposi
 	defer tx.Rollback(ctx)
 
 	q := repository.New(tx)
-	updated, err := q.CompletePaymentFromWebhook(ctx, repository.CompletePaymentFromWebhookParams{
-		ID:                payment.ID,
-		Status:            status,
-		ProviderStatus:    providerStatus,
-		ProviderPaymentID: providerPaymentID,
-		FailureReason:     failureReason,
-		Metadata:          metadata,
-	})
+	var updated repository.Payment
+	if fromWebhook {
+		updated, err = q.CompletePaymentFromWebhook(ctx, repository.CompletePaymentFromWebhookParams{
+			ID:                payment.ID,
+			Status:            status,
+			ProviderStatus:    providerStatus,
+			ProviderPaymentID: providerPaymentID,
+			FailureReason:     failureReason,
+			Metadata:          metadata,
+		})
+	} else {
+		updated, err = q.CompletePaymentFromReturn(ctx, repository.CompletePaymentFromReturnParams{
+			ID:                payment.ID,
+			Status:            status,
+			ProviderStatus:    providerStatus,
+			ProviderPaymentID: providerPaymentID,
+			FailureReason:     failureReason,
+			Metadata:          metadata,
+		})
+	}
 	if err != nil {
 		return updated, fmt.Errorf("complete payment: %w", err)
 	}
 
-	if status == "paid" {
+	if updated.Status == "paid" || updated.Status == "failed" {
 		_, err = q.UpdateRegistrationPaymentStatus(ctx, repository.UpdateRegistrationPaymentStatusParams{
 			UserID:        payment.UserID,
 			TournamentID:  payment.TournamentID,
-			PaymentStatus: "paid",
+			PaymentStatus: updated.Status,
 		})
 		if err != nil {
 			return updated, fmt.Errorf("update registration: %w", err)
@@ -255,7 +289,7 @@ func (s *Service) completePaymentFromWebhook(ctx context.Context, payment reposi
 		return updated, fmt.Errorf("commit payment transaction: %w", err)
 	}
 
-	if status == "paid" && !alreadyPaid && s.notifier != nil {
+	if updated.Status == "paid" && !alreadyPaid && s.notifier != nil {
 		tournament, terr := s.repo.GetTournament(ctx, payment.TournamentID)
 		title := "Tournament"
 		if terr == nil {
@@ -271,7 +305,7 @@ func (s *Service) completePaymentFromWebhook(ctx context.Context, payment reposi
 		})
 	}
 
-	if status == "failed" && payment.Status != "failed" && payment.Status != "paid" && s.notifier != nil {
+	if updated.Status == "failed" && !alreadyFailed && !alreadyPaid && s.notifier != nil {
 		link := fmt.Sprintf("/tournaments/%s", payment.TournamentID)
 		s.notifier.Emit(ctx, repository.CreateNotificationParams{
 			UserID:  payment.UserID,
