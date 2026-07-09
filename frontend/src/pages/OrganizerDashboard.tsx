@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { AlertTriangle, CheckCircle2, DollarSign, Landmark, Plus, Smartphone, Trophy } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, DollarSign, Landmark, MoreHorizontal, Plus, Smartphone, Trophy } from 'lucide-react'
 import { api, type Tournament } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 
@@ -19,6 +19,8 @@ interface MatchRow {
   dispute_opened_at?: string | null
 }
 
+type PayoutMethod = 'telebirr' | 'bank' | 'other'
+
 interface PayoutRow {
   id: string
   tournament_id: string
@@ -26,12 +28,13 @@ interface PayoutRow {
   amount: number
   currency: string
   status: string
-  payout_method?: 'telebirr' | 'bank' | null
+  payout_method?: PayoutMethod | null
   phone_number?: string | null
   telebirr_number?: string | null
   bank_name?: string | null
   bank_account_name?: string | null
   bank_account_number?: string | null
+  payout_instructions?: string | null
   payout_details_submitted_at?: string | null
   paid_at?: string | null
   created_at: string
@@ -285,18 +288,22 @@ function PayoutDetails({ payout }: { payout: PayoutRow }) {
     )
   }
 
+  const isBank = payout.payout_method === 'bank'
+  const isOther = payout.payout_method === 'other'
+
   return (
     <div className="mt-3 rounded-lg bg-surface-container-low p-3">
       <div className="mb-2 flex items-center gap-2 text-body-sm font-medium text-on-surface">
-        {payout.payout_method === 'bank' ? <Landmark className="h-4 w-4" /> : <Smartphone className="h-4 w-4" />}
-        {payout.payout_method === 'bank' ? 'Bank payout' : 'Telebirr payout'}
+        {isBank ? <Landmark className="h-4 w-4" /> : isOther ? <MoreHorizontal className="h-4 w-4" /> : <Smartphone className="h-4 w-4" />}
+        {isBank ? 'Bank payout' : isOther ? 'Other payout' : 'Telebirr payout'}
       </div>
       <div className="grid gap-2 text-body-sm sm:grid-cols-2">
         {payout.phone_number && <Detail label="Phone" value={payout.phone_number} />}
         {payout.payout_method === 'telebirr' && payout.telebirr_number && <Detail label="Telebirr number" value={payout.telebirr_number} />}
-        {payout.payout_method === 'bank' && payout.bank_name && <Detail label="Bank" value={payout.bank_name} />}
-        {payout.payout_method === 'bank' && payout.bank_account_name && <Detail label="Account name" value={payout.bank_account_name} />}
-        {payout.payout_method === 'bank' && payout.bank_account_number && <Detail label="Account number" value={payout.bank_account_number} />}
+        {isBank && payout.bank_name && <Detail label="Bank" value={payout.bank_name} />}
+        {isBank && payout.bank_account_name && <Detail label="Account name" value={payout.bank_account_name} />}
+        {isBank && payout.bank_account_number && <Detail label="Account number" value={payout.bank_account_number} />}
+        {isOther && payout.payout_instructions && <Detail label="Instructions" value={payout.payout_instructions} />}
       </div>
       <p className="mt-2 text-label-md text-text-secondary">Submitted {formatDate(payout.payout_details_submitted_at)}</p>
     </div>

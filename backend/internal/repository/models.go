@@ -125,6 +125,7 @@ type Payout struct {
 	BankName                 *string    `json:"bank_name,omitempty"`
 	BankAccountName          *string    `json:"bank_account_name,omitempty"`
 	BankAccountNumber        *string    `json:"bank_account_number,omitempty"`
+	PayoutInstructions       *string    `json:"payout_instructions,omitempty"`
 	PayoutDetailsSubmittedAt *time.Time `json:"payout_details_submitted_at,omitempty"`
 	PaidAt                   *time.Time `json:"paid_at,omitempty"`
 	PaidBy                   *string    `json:"paid_by,omitempty"`

@@ -4,7 +4,7 @@ import "context"
 
 const payoutColumns = `id, tournament_id, winner_id, amount, currency, status,
     payout_method, phone_number, telebirr_number, bank_name, bank_account_name,
-    bank_account_number, payout_details_submitted_at,
+    bank_account_number, payout_instructions, payout_details_submitted_at,
     paid_at, paid_by, note, created_at, updated_at`
 
 func scanPayout(row interface {
@@ -14,7 +14,7 @@ func scanPayout(row interface {
 	err := row.Scan(
 		&p.ID, &p.TournamentID, &p.WinnerID, &p.Amount, &p.Currency, &p.Status,
 		&p.PayoutMethod, &p.PhoneNumber, &p.TelebirrNumber, &p.BankName, &p.BankAccountName,
-		&p.BankAccountNumber, &p.PayoutDetailsSubmittedAt,
+		&p.BankAccountNumber, &p.PayoutInstructions, &p.PayoutDetailsSubmittedAt,
 		&p.PaidAt, &p.PaidBy, &p.Note, &p.CreatedAt, &p.UpdatedAt,
 	)
 	return p, err
@@ -84,10 +84,47 @@ func (q *Queries) ListPayoutsByWinner(ctx context.Context, winnerID string) ([]P
 	return out, rows.Err()
 }
 
+const listCompletedWonTournamentIDsMissingPayout = `
+SELECT DISTINCT t.id
+FROM tournaments t
+JOIN matches m ON m.tournament_id = t.id
+WHERE t.status = 'completed'
+  AND m.winner_id = $1
+  AND m.status = 'completed'
+  AND m.round = (
+      SELECT COALESCE(MAX(m2.round), 0)
+      FROM matches m2
+      WHERE m2.tournament_id = t.id
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM payouts p
+      WHERE p.tournament_id = t.id
+        AND p.winner_id = $1
+  )
+ORDER BY t.id`
+
+func (q *Queries) ListCompletedWonTournamentIDsMissingPayout(ctx context.Context, winnerID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, listCompletedWonTournamentIDsMissingPayout, winnerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 const listPayoutsByOrganizer = `
 SELECT p.id, p.tournament_id, p.winner_id, p.amount, p.currency, p.status,
        p.payout_method, p.phone_number, p.telebirr_number, p.bank_name, p.bank_account_name,
-       p.bank_account_number, p.payout_details_submitted_at,
+       p.bank_account_number, p.payout_instructions, p.payout_details_submitted_at,
        p.paid_at, p.paid_by, p.note, p.created_at, p.updated_at
 FROM payouts p
 JOIN tournaments t ON t.id = p.tournament_id
@@ -147,13 +184,14 @@ func (q *Queries) MarkPayoutPaid(ctx context.Context, p MarkPayoutPaidParams) (P
 }
 
 type UpdatePayoutDetailsParams struct {
-	ID                string  `json:"id"`
-	PayoutMethod      string  `json:"payout_method"`
-	PhoneNumber       *string `json:"phone_number,omitempty"`
-	TelebirrNumber    *string `json:"telebirr_number,omitempty"`
-	BankName          *string `json:"bank_name,omitempty"`
-	BankAccountName   *string `json:"bank_account_name,omitempty"`
-	BankAccountNumber *string `json:"bank_account_number,omitempty"`
+	ID                 string  `json:"id"`
+	PayoutMethod       string  `json:"payout_method"`
+	PhoneNumber        *string `json:"phone_number,omitempty"`
+	TelebirrNumber     *string `json:"telebirr_number,omitempty"`
+	BankName           *string `json:"bank_name,omitempty"`
+	BankAccountName    *string `json:"bank_account_name,omitempty"`
+	BankAccountNumber  *string `json:"bank_account_number,omitempty"`
+	PayoutInstructions *string `json:"payout_instructions,omitempty"`
 }
 
 const updatePayoutDetails = `
@@ -164,6 +202,7 @@ SET payout_method = $2,
     bank_name = $5,
     bank_account_name = $6,
     bank_account_number = $7,
+    payout_instructions = $8,
     payout_details_submitted_at = NOW(),
     updated_at = NOW()
 WHERE id = $1
@@ -180,5 +219,6 @@ func (q *Queries) UpdatePayoutDetails(ctx context.Context, p UpdatePayoutDetails
 		p.BankName,
 		p.BankAccountName,
 		p.BankAccountNumber,
+		p.PayoutInstructions,
 	))
 }

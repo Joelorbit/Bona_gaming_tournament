@@ -176,12 +176,13 @@ func (s *Service) MarkPaid(ctx context.Context, payoutID, organizerID, note stri
 }
 
 type SubmitDetailsParams struct {
-	PayoutMethod      string  `json:"payout_method"`
-	PhoneNumber       *string `json:"phone_number,omitempty"`
-	TelebirrNumber    *string `json:"telebirr_number,omitempty"`
-	BankName          *string `json:"bank_name,omitempty"`
-	BankAccountName   *string `json:"bank_account_name,omitempty"`
-	BankAccountNumber *string `json:"bank_account_number,omitempty"`
+	PayoutMethod       string  `json:"payout_method"`
+	PhoneNumber        *string `json:"phone_number,omitempty"`
+	TelebirrNumber     *string `json:"telebirr_number,omitempty"`
+	BankName           *string `json:"bank_name,omitempty"`
+	BankAccountName    *string `json:"bank_account_name,omitempty"`
+	BankAccountNumber  *string `json:"bank_account_number,omitempty"`
+	PayoutInstructions *string `json:"payout_instructions,omitempty"`
 }
 
 func (s *Service) SubmitDetails(ctx context.Context, payoutID, winnerID string, params SubmitDetailsParams) (*repository.Payout, error) {
@@ -202,6 +203,7 @@ func (s *Service) SubmitDetails(ctx context.Context, payoutID, winnerID string, 
 	bankName := cleanString(params.BankName)
 	bankAccountName := cleanString(params.BankAccountName)
 	bankAccountNumber := cleanString(params.BankAccountNumber)
+	instructions := cleanString(params.PayoutInstructions)
 
 	switch method {
 	case "telebirr":
@@ -211,23 +213,34 @@ func (s *Service) SubmitDetails(ctx context.Context, payoutID, winnerID string, 
 		bankName = nil
 		bankAccountName = nil
 		bankAccountNumber = nil
+		instructions = nil
 	case "bank":
 		if bankName == nil || bankAccountName == nil || bankAccountNumber == nil {
 			return nil, fmt.Errorf("bank name, account name, and account number are required")
 		}
 		telebirr = nil
+		instructions = nil
+	case "other":
+		if instructions == nil {
+			return nil, fmt.Errorf("payment instructions are required")
+		}
+		telebirr = nil
+		bankName = nil
+		bankAccountName = nil
+		bankAccountNumber = nil
 	default:
-		return nil, fmt.Errorf("payout method must be telebirr or bank")
+		return nil, fmt.Errorf("payout method must be telebirr, bank, or other")
 	}
 
 	updated, err := s.repo.UpdatePayoutDetails(ctx, repository.UpdatePayoutDetailsParams{
-		ID:                payoutID,
-		PayoutMethod:      method,
-		PhoneNumber:       phone,
-		TelebirrNumber:    telebirr,
-		BankName:          bankName,
-		BankAccountName:   bankAccountName,
-		BankAccountNumber: bankAccountNumber,
+		ID:                 payoutID,
+		PayoutMethod:       method,
+		PhoneNumber:        phone,
+		TelebirrNumber:     telebirr,
+		BankName:           bankName,
+		BankAccountName:    bankAccountName,
+		BankAccountNumber:  bankAccountNumber,
+		PayoutInstructions: instructions,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("save payout details: %w", err)
@@ -273,9 +286,25 @@ func (s *Service) ListByTournament(ctx context.Context, tournamentID, organizerI
 }
 
 func (s *Service) ListByWinner(ctx context.Context, winnerID string) ([]repository.Payout, error) {
+	if err := s.ensureMissingWinnerPayouts(ctx, winnerID); err != nil {
+		return nil, err
+	}
 	return s.repo.ListPayoutsByWinner(ctx, winnerID)
 }
 
 func (s *Service) ListByOrganizer(ctx context.Context, organizerID string) ([]repository.Payout, error) {
 	return s.repo.ListPayoutsByOrganizer(ctx, organizerID)
+}
+
+func (s *Service) ensureMissingWinnerPayouts(ctx context.Context, winnerID string) error {
+	tournamentIDs, err := s.repo.ListCompletedWonTournamentIDsMissingPayout(ctx, winnerID)
+	if err != nil {
+		return fmt.Errorf("find missing winner payouts: %w", err)
+	}
+	for _, tournamentID := range tournamentIDs {
+		if _, err := s.EnsureForTournament(ctx, tournamentID); err != nil {
+			return fmt.Errorf("create missing payout for tournament %s: %w", tournamentID, err)
+		}
+	}
+	return nil
 }

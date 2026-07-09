@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { Trophy, Calendar, Award, Receipt } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
+import { Trophy, Calendar, Award, Receipt, Wallet } from 'lucide-react'
 import { api, type Tournament } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 
@@ -36,6 +37,7 @@ interface PayoutRow {
   amount: number
   currency: string
   status: string
+  payout_details_submitted_at?: string | null
   paid_at?: string | null
   created_at: string
 }
@@ -79,6 +81,7 @@ export function PlayerDashboard() {
   const completed = registrations.filter(r => r.status === 'completed')
   const totalWon = payouts.filter(p => p.status === 'paid').reduce((s, p) => s + p.amount, 0)
   const pendingPayouts = payouts.filter(p => p.status === 'pending')
+  const payoutsNeedingDetails = pendingPayouts.filter(p => !p.payout_details_submitted_at)
 
   return (
     <div className="space-y-6">
@@ -90,6 +93,20 @@ export function PlayerDashboard() {
         <StatCard icon={<Award />} label="Wins" value={payouts.length} />
         <StatCard icon={<Receipt />} label="Total won" value={`${totalWon.toLocaleString()} ETB`} />
       </div>
+
+      {payoutsNeedingDetails.length > 0 && (
+        <Card padding="md" className="border-primary/40 bg-primary-50">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-body-sm font-medium text-on-surface">You won. Add payout details to get paid.</p>
+              <p className="text-label-md text-text-secondary">Enter Telebirr, bank, or other payment details for the organizer.</p>
+            </div>
+            <Link to="/me/payouts">
+              <Button size="sm" icon={<Wallet className="h-4 w-4" />}>Add payout details</Button>
+            </Link>
+          </div>
+        </Card>
+      )}
 
       <Card padding="lg">
         <CardHeader><CardTitle>Open matches</CardTitle></CardHeader>
@@ -159,7 +176,9 @@ export function PlayerDashboard() {
                   </div>
                   <div className="text-right">
                     <p className="text-body-md font-bold text-on-surface">{p.amount.toLocaleString()} {p.currency}</p>
-                    <Badge status={p.status === 'paid' ? 'completed' : 'pending'}>{p.status}</Badge>
+                    <Badge status={p.status === 'paid' ? 'completed' : 'pending'}>
+                      {p.status === 'pending' && !p.payout_details_submitted_at ? 'details needed' : p.status}
+                    </Badge>
                   </div>
                 </div>
               ))}
@@ -167,7 +186,9 @@ export function PlayerDashboard() {
           )}
           {pendingPayouts.length > 0 && (
             <p className="text-body-sm text-text-secondary mt-3">
-              {pendingPayouts.length} payout{pendingPayouts.length === 1 ? '' : 's'} pending from organizer.
+              {payoutsNeedingDetails.length > 0
+                ? `${payoutsNeedingDetails.length} payout${payoutsNeedingDetails.length === 1 ? '' : 's'} need your payout details.`
+                : `${pendingPayouts.length} payout${pendingPayouts.length === 1 ? '' : 's'} pending from organizer.`}
             </p>
           )}
         </CardContent>

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { AlertTriangle, Clock, DollarSign, Landmark, Shield, Smartphone, Trophy, Users } from 'lucide-react'
+import { AlertTriangle, Clock, DollarSign, Landmark, MoreHorizontal, Shield, Smartphone, Trophy, Users } from 'lucide-react'
 import { api, ApiError, type Tournament } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatDate, formatTimeAgo } from '@/lib/utils'
@@ -31,6 +31,8 @@ interface AuditEntry {
   created_at: string
 }
 
+type PayoutMethod = 'telebirr' | 'bank' | 'other'
+
 interface PayoutRow {
   id: string
   tournament_id: string
@@ -38,12 +40,13 @@ interface PayoutRow {
   amount: number
   currency: string
   status: string
-  payout_method?: 'telebirr' | 'bank' | null
+  payout_method?: PayoutMethod | null
   phone_number?: string | null
   telebirr_number?: string | null
   bank_name?: string | null
   bank_account_name?: string | null
   bank_account_number?: string | null
+  payout_instructions?: string | null
   payout_details_submitted_at?: string | null
   paid_at?: string | null
   created_at: string
@@ -317,11 +320,14 @@ function AdminPayoutDetails({ payout }: { payout: PayoutRow }) {
     )
   }
 
+  const isBank = payout.payout_method === 'bank'
+  const isOther = payout.payout_method === 'other'
+
   return (
     <div className="mt-3 rounded-lg bg-surface-container-low p-3">
       <div className="mb-2 flex items-center gap-2 text-body-sm font-medium text-on-surface">
-        {payout.payout_method === 'bank' ? <Landmark className="h-4 w-4" /> : <Smartphone className="h-4 w-4" />}
-        {payout.payout_method === 'bank' ? 'Bank payout' : 'Telebirr payout'}
+        {isBank ? <Landmark className="h-4 w-4" /> : isOther ? <MoreHorizontal className="h-4 w-4" /> : <Smartphone className="h-4 w-4" />}
+        {isBank ? 'Bank payout' : isOther ? 'Other payout' : 'Telebirr payout'}
       </div>
       <p className="text-body-sm text-text-secondary">Sensitive payout details are visible only to the hosting organizer.</p>
       <p className="mt-2 text-label-md text-text-secondary">Submitted {formatDate(payout.payout_details_submitted_at)}</p>

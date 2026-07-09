@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Landmark, Receipt, Save, Smartphone, Trophy, Wallet } from 'lucide-react'
+import { ArrowLeft, Landmark, MoreHorizontal, Receipt, Save, Smartphone, Trophy, Wallet } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/Input'
 import { api, type Tournament } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 
+type PayoutMethod = 'telebirr' | 'bank' | 'other'
+
 interface PayoutRow {
   id: string
   tournament_id: string
@@ -16,12 +18,13 @@ interface PayoutRow {
   amount: number
   currency: string
   status: string
-  payout_method?: 'telebirr' | 'bank' | null
+  payout_method?: PayoutMethod | null
   phone_number?: string | null
   telebirr_number?: string | null
   bank_name?: string | null
   bank_account_name?: string | null
   bank_account_number?: string | null
+  payout_instructions?: string | null
   payout_details_submitted_at?: string | null
   note?: string | null
   paid_at?: string | null
@@ -29,12 +32,13 @@ interface PayoutRow {
 }
 
 interface PayoutDetailsForm {
-  payout_method: 'telebirr' | 'bank'
+  payout_method: PayoutMethod
   phone_number: string
   telebirr_number: string
   bank_name: string
   bank_account_name: string
   bank_account_number: string
+  payout_instructions: string
 }
 
 export function MePayouts() {
@@ -109,6 +113,7 @@ export function MePayouts() {
         bank_name: form.payout_method === 'bank' ? form.bank_name : undefined,
         bank_account_name: form.payout_method === 'bank' ? form.bank_account_name : undefined,
         bank_account_number: form.payout_method === 'bank' ? form.bank_account_number : undefined,
+        payout_instructions: form.payout_method === 'other' ? form.payout_instructions : undefined,
       }
       const updated = await api.post<PayoutRow>(`/api/v1/payouts/${payout.id}/details`, payload)
       setPayouts(current => current.map(row => row.id === updated.id ? updated : row))
@@ -129,7 +134,7 @@ export function MePayouts() {
             Player dashboard
           </Link>
           <h1 className="mt-2 text-headline-md text-on-surface">My payouts</h1>
-          <p className="text-body-md text-text-secondary">Track prize payments from tournaments you won.</p>
+          <p className="text-body-md text-text-secondary">When you win, add where the organizer should send your prize money.</p>
         </div>
         <Link to="/tournaments">
           <Button variant="secondary" icon={<Trophy className="h-4 w-4" />}>Browse tournaments</Button>
@@ -218,27 +223,31 @@ function PayoutDetailsEditor({
   onSubmit: () => void
 }) {
   const isTelebirr = form.payout_method === 'telebirr'
+  const isBank = form.payout_method === 'bank'
+  const isOther = form.payout_method === 'other'
   const complete = isTelebirr
     ? form.telebirr_number.trim().length > 0
-    : form.bank_name.trim().length > 0 && form.bank_account_name.trim().length > 0 && form.bank_account_number.trim().length > 0
+    : isBank
+      ? form.bank_name.trim().length > 0 && form.bank_account_name.trim().length > 0 && form.bank_account_number.trim().length > 0
+      : form.payout_instructions.trim().length > 0
 
   return (
     <div className="mt-4 border-t border-border pt-4">
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-body-sm font-medium text-on-surface">Payout details</p>
+          <p className="text-body-sm font-medium text-on-surface">Where should the organizer send your prize?</p>
           <p className="text-label-md text-text-secondary">
-            {payout.payout_details_submitted_at ? 'Organizer can see these details.' : 'Submit details so the organizer can pay you.'}
+            {payout.payout_details_submitted_at ? 'The organizer can see these details and pay you.' : 'Choose one payout method and fill in the required fields.'}
           </p>
         </div>
         {payout.payout_details_submitted_at && <Badge status="completed">submitted</Badge>}
       </div>
 
-      <div className="mb-4 inline-flex rounded-lg border border-border bg-surface-container-low p-1">
+      <div className="mb-4 grid grid-cols-3 rounded-lg border border-border bg-surface-container-low p-1">
         <button
           type="button"
           onClick={() => onChange('payout_method', 'telebirr')}
-          className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-body-sm font-medium transition-colors ${isTelebirr ? 'bg-white text-primary shadow-sm' : 'text-text-secondary hover:text-on-surface'}`}
+          className={`inline-flex h-10 items-center justify-center gap-2 rounded-md px-2 text-body-sm font-medium transition-colors ${isTelebirr ? 'bg-white text-primary shadow-sm' : 'text-text-secondary hover:text-on-surface'}`}
         >
           <Smartphone className="h-4 w-4" />
           Telebirr
@@ -246,10 +255,18 @@ function PayoutDetailsEditor({
         <button
           type="button"
           onClick={() => onChange('payout_method', 'bank')}
-          className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-body-sm font-medium transition-colors ${!isTelebirr ? 'bg-white text-primary shadow-sm' : 'text-text-secondary hover:text-on-surface'}`}
+          className={`inline-flex h-10 items-center justify-center gap-2 rounded-md px-2 text-body-sm font-medium transition-colors ${isBank ? 'bg-white text-primary shadow-sm' : 'text-text-secondary hover:text-on-surface'}`}
         >
           <Landmark className="h-4 w-4" />
           Bank
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange('payout_method', 'other')}
+          className={`inline-flex h-10 items-center justify-center gap-2 rounded-md px-2 text-body-sm font-medium transition-colors ${isOther ? 'bg-white text-primary shadow-sm' : 'text-text-secondary hover:text-on-surface'}`}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+          Other
         </button>
       </div>
 
@@ -261,29 +278,31 @@ function PayoutDetailsEditor({
           placeholder="Optional contact phone"
         />
 
-        {isTelebirr ? (
+        {isTelebirr && (
           <Input
-            label="Telebirr number"
+            label="Telebirr number *"
             value={form.telebirr_number}
             onChange={event => onChange('telebirr_number', event.target.value)}
             placeholder="Telebirr wallet number"
           />
-        ) : (
+        )}
+
+        {isBank && (
           <>
             <Input
-              label="Bank name"
+              label="Bank name *"
               value={form.bank_name}
               onChange={event => onChange('bank_name', event.target.value)}
               placeholder="Commercial Bank of Ethiopia"
             />
             <Input
-              label="Account name"
+              label="Account name *"
               value={form.bank_account_name}
               onChange={event => onChange('bank_account_name', event.target.value)}
               placeholder="Name on account"
             />
             <Input
-              label="Account number"
+              label="Account number *"
               value={form.bank_account_number}
               onChange={event => onChange('bank_account_number', event.target.value)}
               placeholder="Bank account number"
@@ -291,6 +310,20 @@ function PayoutDetailsEditor({
           </>
         )}
       </div>
+
+      {isOther && (
+        <div className="mt-3 space-y-1.5">
+          <label className="block text-body-sm font-medium text-on-surface">
+            Payment instructions *
+          </label>
+          <textarea
+            className="min-h-24 w-full rounded-lg border border-border bg-white px-3 py-2 text-body-md text-on-surface placeholder:text-text-tertiary transition-all duration-150 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+            value={form.payout_instructions}
+            onChange={event => onChange('payout_instructions', event.target.value)}
+            placeholder="Example: send by CBE Birr to 09..., or use this wallet/account..."
+          />
+        </div>
+      )}
 
       <div className="mt-4 flex justify-end">
         <Button
@@ -300,7 +333,7 @@ function PayoutDetailsEditor({
           icon={<Save className="h-4 w-4" />}
           onClick={onSubmit}
         >
-          Save payout details
+          Send payout details to organizer
         </Button>
       </div>
     </div>
@@ -329,6 +362,7 @@ function emptyForm(): PayoutDetailsForm {
     bank_name: '',
     bank_account_name: '',
     bank_account_number: '',
+    payout_instructions: '',
   }
 }
 
@@ -340,5 +374,6 @@ function formFromPayout(payout: PayoutRow): PayoutDetailsForm {
     bank_name: payout.bank_name || '',
     bank_account_name: payout.bank_account_name || '',
     bank_account_number: payout.bank_account_number || '',
+    payout_instructions: payout.payout_instructions || '',
   }
 }
